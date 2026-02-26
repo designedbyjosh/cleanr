@@ -2356,7 +2356,8 @@ let _jdpFilter = 'all';
 let _jdpPipeInited = false;
 let _jdpLogCount = 0;
 let _jdpStats = { kept:0, filed:0, trashed:0, errors:0 };
-let _jdpProcessedOffset = 0; // baseline total when current SSE session started
+let _jdpProcessedOffset = 0;     // baseline total when current SSE session started
+let _jdpPipelinePendingReset = false; // defer pipeline blank until first batch event
 
 function openJobDetail(jobId) {
   _jdpJobId = jobId;
@@ -2423,8 +2424,12 @@ function handleJdpSSE(msg) {
   if (event === 'pipeline') {
     const stage = data.stage;
     if (stage === 'fetch') {
-      if (data.status === 'running') setJdpPipeStage('fetch', 'running', null);
-      else if (data.status === 'done') {
+      if (data.status === 'running') {
+        // Deferred reset: blank the previous batch's state at the last possible
+        // moment — just before the new batch's first node lights up.
+        if (_jdpPipelinePendingReset) { resetJdpPipeline(); _jdpPipelinePendingReset = false; }
+        setJdpPipeStage('fetch', 'running', null);
+      } else if (data.status === 'done') {
         setJdpPipeStage('fetch', 'done', data.count);
         document.getElementById('jdpRemaining').textContent = data.total + ' remaining';
       }
@@ -2557,7 +2562,10 @@ function _subscribeJobSSE(jobId, sessionId) {
   // Capture current displayed total as the baseline for this session so that
   // one-off run counters accumulate correctly across batches/retries.
   _jdpProcessedOffset = parseInt(document.getElementById('jdpProcessed')?.textContent || '0') || 0;
-  resetJdpPipeline();
+  // Don't blank the pipeline immediately — keep the previous batch's state
+  // visible until the first real event of the new batch arrives.  The reset
+  // will fire lazily on the first pipeline.fetch.running event.
+  _jdpPipelinePendingReset = true;
   _jdpLogCount = 0;
   _jdpStats = { kept:0, filed:0, trashed:0, errors:0 };
   document.getElementById('jdpLog').innerHTML = '';
