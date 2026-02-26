@@ -1,0 +1,12 @@
+services:
+  inbox-cleaner:
+    build: .
+    ports:
+      - "5050:5000"
+    volumes:
+      - inbox_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  inbox_data:
