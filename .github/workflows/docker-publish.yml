@@ -9,11 +9,17 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write   # required to create tags and releases
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so release notes span all commits
+
+      - name: Generate version tag
+        id: version
+        run: echo "tag=v$(date +'%Y.%m.%d').${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -31,6 +37,19 @@ jobs:
           push: true
           tags: |
             jbwhitcombe/cleanr:latest
-            jbwhitcombe/cleanr:${{ github.sha }}
+            jbwhitcombe/cleanr:${{ steps.version.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          body: |
+            **Docker image:** `jbwhitcombe/cleanr:${{ steps.version.outputs.tag }}`
+
+            ```
+            docker pull jbwhitcombe/cleanr:${{ steps.version.outputs.tag }}
+            ```
