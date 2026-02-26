@@ -2356,6 +2356,7 @@ let _jdpFilter = 'all';
 let _jdpPipeInited = false;
 let _jdpLogCount = 0;
 let _jdpStats = { kept:0, filed:0, trashed:0, errors:0 };
+let _jdpProcessedOffset = 0; // baseline total when current SSE session started
 
 function openJobDetail(jobId) {
   _jdpJobId = jobId;
@@ -2448,7 +2449,13 @@ function handleJdpSSE(msg) {
     else if (data.stage === 'trash') _jdpStats.trashed++;
     // Update progress
     const total = _jdpStats.kept + _jdpStats.filed + _jdpStats.trashed;
-    document.getElementById('jdpProcessed').textContent = total;
+    // For one-off runs (_jdpJobId===null) there is no DB poll, so SSE is the
+    // only source of truth — use offset+total so the counter never resets
+    // between sessions.  For folder jobs, loadJobs() owns jdpProcessed via
+    // the DB total; don't overwrite it here (that caused the reset-to-0 bug).
+    if (_jdpJobId === null) {
+      document.getElementById('jdpProcessed').textContent = _jdpProcessedOffset + total;
+    }
     setJdpPipeStage('apply', 'running', total);
   } else if (event === 'error') {
     _jdpStats.errors++;
@@ -2547,6 +2554,9 @@ function _subscribeJobSSE(jobId, sessionId) {
   // Don't re-subscribe if already on this session
   if (_jdpSse && _jdpSse.url?.includes(sessionId)) return;
   if (_jdpSse) { _jdpSse.close(); _jdpSse = null; }
+  // Capture current displayed total as the baseline for this session so that
+  // one-off run counters accumulate correctly across batches/retries.
+  _jdpProcessedOffset = parseInt(document.getElementById('jdpProcessed')?.textContent || '0') || 0;
   resetJdpPipeline();
   _jdpLogCount = 0;
   _jdpStats = { kept:0, filed:0, trashed:0, errors:0 };
