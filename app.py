@@ -7,7 +7,9 @@ wires up the in-process progress store for manual (non-containerised) runs.
 
 import json
 import logging
+import re
 import secrets
+import subprocess
 import threading
 import time
 from datetime import datetime
@@ -709,6 +711,91 @@ def list_containers():
         'workers':          workers,
         'error':            error,
     })
+
+
+@app.route('/api/containers/<name>/logs')
+def container_logs(name):
+    """Return recent stdout/stderr from a named worker container."""
+    if not re.match(r'^[a-zA-Z0-9_\-]+$', name):
+        return jsonify({'error': 'Invalid container name'}), 400
+    try:
+        result = subprocess.run(
+            ['docker', 'logs', '--tail', '300', '--timestamps', name],
+            capture_output=True, text=True, timeout=10,
+        )
+        combined = (result.stdout + result.stderr).strip()
+        return jsonify({'logs': combined or '(no output)', 'name': name})
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Timed out fetching logs'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes — Accounts
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/accounts', methods=['GET'])
+def list_accounts():
+    db   = get_db()
+    rows = db.execute(
+        'SELECT id, label, email, imap_host, imap_port, created_at FROM accounts ORDER BY created_at DESC'
+    ).fetchall()
+    db.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d['has_password'] = get_credential_meta(f'app_password_{r["id"]}').get('set', False)
+        result.append(d)
+    return jsonify(result)
+
+
+@app.route('/api/accounts', methods=['POST'])
+def create_account():
+    data  = request.json or {}
+    email = data.get('email', '').strip()
+    label = data.get('label', '').strip() or email
+    if not email:
+        return jsonify({'error': 'email required'}), 400
+    db = get_db()
+    cursor = db.execute(
+        'INSERT INTO accounts (label, email, imap_host, imap_port, created_at) VALUES (?,?,?,?,?)',
+        (label, email,
+         data.get('imap_host', 'imap.mail.me.com'),
+         int(data.get('imap_port', 993)),
+         datetime.utcnow().isoformat()),
+    )
+    account_id = cursor.lastrowid
+    db.commit()
+    if data.get('app_password'):
+        save_credential(f'app_password_{account_id}', data['app_password'])
+    row = db.execute('SELECT * FROM accounts WHERE id=?', (account_id,)).fetchone()
+    db.close()
+    return jsonify(dict(row))
+
+
+@app.route('/api/accounts/<int:aid>', methods=['PATCH'])
+def update_account(aid):
+    data = request.json or {}
+    db   = get_db()
+    for k in ('label', 'email', 'imap_host', 'imap_port'):
+        if k in data:
+            db.execute(f'UPDATE accounts SET {k}=? WHERE id=?', (data[k], aid))
+    db.commit()
+    if data.get('app_password'):
+        save_credential(f'app_password_{aid}', data['app_password'])
+    row = db.execute('SELECT * FROM accounts WHERE id=?', (aid,)).fetchone()
+    db.close()
+    return jsonify(dict(row) if row else {})
+
+
+@app.route('/api/accounts/<int:aid>', methods=['DELETE'])
+def delete_account(aid):
+    db = get_db()
+    db.execute('DELETE FROM accounts WHERE id=?', (aid,))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
 
 
 @app.route('/api/cache/stats')

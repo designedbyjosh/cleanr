@@ -118,6 +118,14 @@ def init_db() -> None:
             created_at     TEXT NOT NULL,
             finished_at    TEXT
         );
+        CREATE TABLE IF NOT EXISTS accounts (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            label      TEXT NOT NULL,
+            email      TEXT NOT NULL,
+            imap_host  TEXT NOT NULL DEFAULT 'imap.mail.me.com',
+            imap_port  INTEGER NOT NULL DEFAULT 993,
+            created_at TEXT NOT NULL
+        );
     ''')
 
     # Safe migrations — ignore errors if column already exists
@@ -143,6 +151,10 @@ def init_db() -> None:
         # Tables added in previous iterations — safe no-ops if they already exist
         "CREATE TABLE IF NOT EXISTS job_events (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id INTEGER, run_id INTEGER, session_id TEXT NOT NULL, event TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL)",
         "CREATE TABLE IF NOT EXISTS worker_containers (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id INTEGER NOT NULL, run_id INTEGER, container_id TEXT, container_name TEXT, status TEXT DEFAULT 'starting', created_at TEXT NOT NULL, finished_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, email TEXT NOT NULL, imap_host TEXT NOT NULL DEFAULT 'imap.mail.me.com', imap_port INTEGER NOT NULL DEFAULT 993, created_at TEXT NOT NULL)",
+        "ALTER TABLE schedules ADD COLUMN account_id INTEGER",
+        "ALTER TABLE folder_jobs ADD COLUMN account_id INTEGER",
+        "ALTER TABLE runs ADD COLUMN account_id INTEGER",
     ]
     for sql in migrations:
         try:
