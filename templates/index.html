@@ -2372,6 +2372,7 @@ function closeJobDetail() {
   document.getElementById('jobDetailBackdrop').classList.remove('open');
   if (_jdpSse) { _jdpSse.close(); _jdpSse = null; }
   _jdpJobId = null;
+  loadJobs(); // refresh list so status is current when panel closes
 }
 
 async function _refreshJdpPanel(jobId) {
@@ -2469,8 +2470,13 @@ function handleJdpSSE(msg) {
     if (_jdpSse) { _jdpSse.close(); _jdpSse = null; }
     setJdpPipeStage('done', 'done', data.total_processed || 0);
     loadJdpHistory(_jdpJobId);
-    // Refresh controls
-    setTimeout(() => { if (_jdpJobId) _refreshJdpPanel(_jdpJobId); }, 800);
+    if (_jdpJobId) {
+      // Folder job: refresh the panel controls (pause/resume buttons etc.)
+      setTimeout(() => _refreshJdpPanel(_jdpJobId), 800);
+    } else {
+      // Inbox run: no panel refresh needed, but update the jobs list card to 'done'
+      loadJobs();
+    }
   }
 }
 
@@ -2635,8 +2641,10 @@ async function loadJobs() {
     list.innerHTML = html || '<div class="empty">No jobs yet — click <strong>+ New Job</strong> to get started</div>';
   }
 
-  if (running > 0 && !jobPollTimer) jobPollTimer = setInterval(loadJobs, 4000);
-  else if (running === 0 && jobPollTimer) { clearInterval(jobPollTimer); jobPollTimer = null; }
+  // Keep polling whenever ANY job/run is active — folder jobs OR inbox runs
+  const anyRunning = running > 0 || runs.some(r => r.status === 'running' && !r.job_id);
+  if (anyRunning && !jobPollTimer)  jobPollTimer = setInterval(loadJobs, 4000);
+  else if (!anyRunning && jobPollTimer) { clearInterval(jobPollTimer); jobPollTimer = null; }
 
   // Refresh JDP panel progress without full re-open
   if (_jdpJobId) {
@@ -2780,7 +2788,7 @@ async function createJob() {
     }
     closeJobModal();
     const { session_id, run_id } = await res.json();
-    loadJobs();
+    await loadJobs();   // await so the card is visible before the panel slides in
     // Open detail panel in run mode
     openRunInPanel(run_id, session_id, name || `Inbox cleanup — ${folder}`);
 
