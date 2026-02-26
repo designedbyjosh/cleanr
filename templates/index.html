@@ -626,7 +626,6 @@ a{color:var(--accent);}
   <div class="nav">
     <div class="nav-item active" onclick="nav('dashboard')"><span class="nav-icon">▦</span>Dashboard</div>
     <div class="nav-item" onclick="nav('jobs');loadJobs()"><span class="nav-icon">◎</span>Jobs<span class="nav-badge" id="jobsBadge">0</span></div>
-    <div class="nav-item" onclick="nav('schedules');loadSchedules()"><span class="nav-icon">⊙</span>Schedules</div>
     <div class="nav-item" onclick="nav('folders');loadFolderManager()"><span class="nav-icon">⊞</span>Folders</div>
     <div class="nav-item" onclick="nav('history');loadHistory()"><span class="nav-icon">≡</span>History</div>
   </div>
@@ -783,9 +782,12 @@ a{color:var(--accent);}
   <div class="page-header">
     <div class="page-header-left">
       <div class="page-title"><em>Jobs</em></div>
-      <div class="page-sub">ONE-OFF RUNS &amp; CONTINUOUS FOLDER PROCESSORS</div>
+      <div class="page-sub">RUNS · FOLDER PROCESSORS · AUTOMATED SCHEDULES</div>
     </div>
-    <button class="btn-primary" onclick="openJobModal()">+ New Job</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn-secondary" onclick="openSchedModal()">⊙ New Schedule</button>
+      <button class="btn-primary" onclick="openJobModal()">+ New Job</button>
+    </div>
   </div>
   <div id="jobsList" style="display:flex;flex-direction:column;gap:12px"><div class="empty">No jobs yet</div></div>
 </div>
@@ -794,7 +796,7 @@ a{color:var(--accent);}
 <div class="page" id="page-run" style="display:none!important"></div>
 
 <!-- ── SCHEDULES ── -->
-<div class="page" id="page-schedules">
+<div class="page" id="page-schedules" style="display:none!important">
   <div class="page-header">
     <div class="page-header-left"><div class="page-title"><em>Scheduled</em> Runs</div></div>
     <button class="btn-primary" onclick="openSchedModal()">+ New Schedule</button>
@@ -2607,34 +2609,44 @@ let jobPollTimer = null;
 let _lastJobsFp = '';
 
 async function loadJobs() {
-  const [jobsRes, runsRes] = await Promise.all([
+  const [jobsRes, runsRes, schedsRes] = await Promise.all([
     fetch('/api/folder-jobs'),
     fetch('/api/runs'),
+    fetch('/api/schedules'),
   ]);
   const folderJobs = await jobsRes.json();
   const runs       = await runsRes.json();
+  const scheds     = await schedsRes.json();
 
   const badge   = document.getElementById('jobsBadge');
   const running = folderJobs.filter(j => j.status === 'running').length;
   if (badge.textContent !== String(running)) badge.textContent = running;
   badge.classList.toggle('visible', running > 0);
 
-  // Fingerprint: only rebuild HTML when something changed
+  // Fingerprint: only rebuild HTML when something meaningful changed
   const fp = JSON.stringify(folderJobs.map(j => ({id:j.id,status:j.status,tp:j.total_processed,tr:j.total_remaining})))
-           + JSON.stringify(runs.slice(0,10).map(r => ({id:r.id,status:r.status})));
+           + JSON.stringify(runs.slice(0,15).map(r => ({id:r.id,status:r.status})))
+           + JSON.stringify(scheds.map(s => ({id:s.id,enabled:s.enabled,last_run:s.last_run})));
   if (fp !== _lastJobsFp) {
     _lastJobsFp = fp;
     const list = document.getElementById('jobsList');
     let html   = '';
+    const gap  = '<div style="margin-top:20px"></div>';
+
+    if (scheds.length) {
+      html += _sectionLabel('Schedules');
+      html += scheds.map(s => renderSchedCard(s)).join('');
+    }
 
     if (folderJobs.length) {
-      html += `<div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:4px">Folder Jobs</div>`;
+      html += (scheds.length ? gap : '') + _sectionLabel('Folder Jobs');
       html += folderJobs.map(j => renderJobCard(j)).join('');
     }
 
-    const recentRuns = runs.filter(r => r.run_type !== 'scheduled' && !r.job_id).slice(0, 8);
+    // Recent runs — includes both manual AND scheduled runs
+    const recentRuns = runs.filter(r => !r.job_id).slice(0, 10);
     if (recentRuns.length) {
-      html += `<div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:4px;margin-top:${folderJobs.length ? '16px' : '0'}">Recent Runs</div>`;
+      html += (scheds.length || folderJobs.length ? gap : '') + _sectionLabel('Recent Runs');
       html += recentRuns.map(r => renderRunCard(r)).join('');
     }
 
@@ -2662,10 +2674,35 @@ async function loadJobs() {
   }
 }
 
+function _sectionLabel(text) {
+  return `<div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:4px">${text}</div>`;
+}
+
+function renderSchedCard(s) {
+  return `<div class="sched-card">
+    <div>
+      <div class="sched-name">${escHtml(s.name)}</div>
+      <div class="sched-meta">
+        <span>${fmtInterval(s)}</span>
+        <span>${s.limit_per_run} emails/run</span>
+        ${s.last_run ? `<span>Last: ${fmtTime(s.last_run)}</span>` : '<span>Never run</span>'}
+        ${s.next_run && s.enabled ? `<span>Next: ${fmtTime(s.next_run)}</span>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <label class="toggle"><input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleSchedule(${s.id}, this.checked)"><span class="toggle-slider"></span></label>
+      <button class="btn-icon warn" onclick="deleteSchedule(${s.id})" title="Delete">✕</button>
+    </div>
+  </div>`;
+}
+
 function renderRunCard(r) {
   const dur = r.finished_at && r.started_at
     ? Math.round((new Date(r.finished_at + 'Z') - new Date(r.started_at + 'Z')) / 1000) : null;
-  const statusClass = r.status === 'done' ? 'done' : r.status === 'error' ? 'error' : 'running';
+  const statusClass   = r.status === 'done' ? 'done' : r.status === 'error' ? 'error' : 'running';
+  const isScheduled   = r.run_type === 'scheduled';
+  const typeBadge     = isScheduled ? 'cached' : 'filed';   // purple for auto, green for manual
+  const typeLabel     = isScheduled ? '⊙ scheduled' : '▶ manual';
   return `<div class="job-card ${r.status === 'running' ? 'running' : ''}" style="cursor:pointer" onclick="loadRunDetail(${r.id});nav('history');loadHistory()">
     <div>
       <div class="job-title" style="display:flex;align-items:center;gap:8px">
@@ -2673,7 +2710,7 @@ function renderRunCard(r) {
         ${r.status === 'running' ? '<span class="batch-card-spinner"></span>' : ''}
       </div>
       <div class="job-meta">
-        <span><span class="badge badge-${r.run_type === 'scheduled' ? 'keep' : 'filed'}">${r.run_type || 'manual'}</span></span>
+        <span class="badge badge-${typeBadge}">${typeLabel}</span>
         <span class="badge badge-${statusClass}">${r.status}</span>
         <span>${fmtTime(r.started_at)}</span>
         ${dur != null ? `<span>${dur}s</span>` : ''}
@@ -2831,30 +2868,20 @@ function openRunInPanel(runId, sessionId, title) {
 /* ════════════════════════════════════════════════════════════
    SCHEDULES
 ════════════════════════════════════════════════════════════ */
-async function loadSchedules() {
-  const res = await fetch('/api/schedules');
-  const scheds = await res.json();
-  const list = document.getElementById('schedsList');
-  list.innerHTML = scheds.length ? scheds.map(s => `
-    <div class="sched-card">
-      <div>
-        <div class="sched-name">${escHtml(s.name)}</div>
-        <div class="sched-meta">
-          <span>${fmtInterval(s)}</span>
-          <span>${s.limit_per_run} emails/run</span>
-          ${s.last_run ? `<span>Last: ${fmtTime(s.last_run)}</span>` : ''}
-          ${s.next_run && s.enabled ? `<span>Next: ${fmtTime(s.next_run)}</span>` : ''}
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <label class="toggle"><input type="checkbox" ${s.enabled?'checked':''} onchange="toggleSchedule(${s.id}, this.checked)"><span class="toggle-slider"></span></label>
-        <button class="btn-icon warn" onclick="deleteSchedule(${s.id})" title="Delete">✕</button>
-      </div>
-    </div>`).join('') : '<div class="empty">No schedules yet</div>';
-}
+// loadSchedules is now a thin alias — schedules render inside loadJobs()
+async function loadSchedules() { return loadJobs(); }
 
-async function toggleSchedule(id, enabled) { await fetch(`/api/schedules/${id}`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled?1:0})}); loadSchedules(); }
-async function deleteSchedule(id) { if (confirm('Delete schedule?')) { await fetch(`/api/schedules/${id}`,{method:'DELETE'}); loadSchedules(); } }
+async function toggleSchedule(id, enabled) {
+  await fetch(`/api/schedules/${id}`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:enabled?1:0})});
+  _lastJobsFp = ''; // bust cache so schedules section re-renders
+  loadJobs();
+}
+async function deleteSchedule(id) {
+  if (!confirm('Delete schedule?')) return;
+  await fetch(`/api/schedules/${id}`, {method:'DELETE'});
+  _lastJobsFp = '';
+  loadJobs();
+}
 function openSchedModal() { document.getElementById('schedModal').classList.add('open'); }
 function closeSchedModal() { document.getElementById('schedModal').classList.remove('open'); }
 
@@ -2866,7 +2893,8 @@ async function createSchedule() {
   };
   await fetch('/api/schedules', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
   closeSchedModal();
-  loadSchedules();
+  _lastJobsFp = '';
+  loadJobs();
 }
 
 function fmtInterval(s) {
@@ -3119,8 +3147,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadCredStatus();
   pollContainerStatus();
   // loadFolderList() intentionally deferred — lazy-loaded on first Run/Job use
-  loadJobs();
-  loadSchedules();
+  loadJobs();   // also fetches and renders schedules now
   loadSettingsPage();
   setInterval(loadDashboard, 30000);
   setInterval(loadCredStatus, 15000);
