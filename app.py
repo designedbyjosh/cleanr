@@ -382,7 +382,7 @@ def stream_progress(session_id):
 # Routes — Schedules
 # ─────────────────────────────────────────────────────────────────────────────
 
-_SCHEDULE_FIELDS = ['name', 'enabled', 'interval_hours', 'limit_per_run',
+_SCHEDULE_FIELDS = ['name', 'enabled', 'interval_hours', 'interval_minutes', 'limit_per_run',
                     'folder', 'custom_prompt', 'delete_marketing_unread', 'skip_flagged']
 
 
@@ -398,14 +398,17 @@ def list_schedules():
 def create_schedule():
     data = request.json or {}
     db   = get_db()
+    interval_minutes = data.get('interval_minutes')
+    interval_hours   = data.get('interval_hours', 24)
     cursor = db.execute(
         'INSERT INTO schedules '
-        '(name, enabled, interval_hours, limit_per_run, folder, '
+        '(name, enabled, interval_hours, interval_minutes, limit_per_run, folder, '
         ' custom_prompt, delete_marketing_unread, skip_flagged, created_at) '
-        'VALUES (?,?,?,?,?,?,?,?,?)',
+        'VALUES (?,?,?,?,?,?,?,?,?,?)',
         (data.get('name', 'Auto cleanup'),
          data.get('enabled', 1),
-         data.get('interval_hours', 24),
+         interval_hours,
+         int(interval_minutes) if interval_minutes is not None else None,
          data.get('limit_per_run', 50),
          data.get('folder', 'INBOX'),
          sanitise_custom_prompt(data.get('custom_prompt', '')),

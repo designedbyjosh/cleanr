@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -19,17 +19,19 @@
   --purple:#b47ae8;--purple-dim:rgba(180,122,232,0.12);
   --orange:#e8a472;--orange-dim:rgba(232,164,114,0.12);
   --shadow:0 2px 16px rgba(0,0,0,0.4);
+  --pipeline-bg:#0a0a0d;--pipeline-dot:rgba(255,255,255,0.055);
 }
 [data-theme="light"]{
-  --bg:#f4f2ee;--surface:#faf9f7;--surface2:#f0ede8;--surface3:#e8e4de;
-  --border:#ddd9d2;--border2:#ccc8c0;--text:#1a1916;--text2:#6b6860;--text3:#aaa89f;
-  --accent:#b07a1a;--accent-dim:rgba(176,122,26,0.10);
-  --green:#2a8c4a;--green-dim:rgba(42,140,74,0.10);
-  --blue:#1a6ab0;--blue-dim:rgba(26,106,176,0.10);
-  --red:#b03a2a;--red-dim:rgba(176,58,42,0.10);
-  --purple:#7a2ab0;--purple-dim:rgba(122,42,176,0.10);
-  --orange:#b06020;--orange-dim:rgba(176,96,32,0.10);
-  --shadow:0 2px 12px rgba(0,0,0,0.08);
+  --bg:#f5f5f7;--surface:#ffffff;--surface2:#f5f5f7;--surface3:#e8e8ed;
+  --border:#d2d2d7;--border2:#b0b0b8;--text:#1d1d1f;--text2:#6e6e73;--text3:#aeaeb2;
+  --accent:#0071e3;--accent-dim:rgba(0,113,227,0.10);
+  --green:#28a745;--green-dim:rgba(40,167,69,0.10);
+  --blue:#0071e3;--blue-dim:rgba(0,113,227,0.10);
+  --red:#d70015;--red-dim:rgba(215,0,21,0.10);
+  --purple:#6e3ac8;--purple-dim:rgba(110,58,200,0.10);
+  --orange:#e25c00;--orange-dim:rgba(226,92,0,0.10);
+  --shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 14px rgba(0,0,0,0.05);
+  --pipeline-bg:#f0f0f5;--pipeline-dot:rgba(0,0,0,0.07);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;}
@@ -190,10 +192,24 @@ body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-s
 a{color:var(--accent);}
 
 /* ═══════════════════════════════════════════════
-   PIPELINE DIAGRAM
+   PIPELINE DIAGRAM — pannable canvas
 ═══════════════════════════════════════════════ */
-.pipeline-wrap{padding:20px 24px 16px;position:relative;overflow:visible;}
-.pipeline-svg{width:100%;overflow:visible;display:block;}
+.pipeline-wrap{
+  position:relative;overflow:hidden;height:174px;border-radius:8px;
+  cursor:grab;user-select:none;margin-top:10px;
+  background:var(--pipeline-bg);
+}
+.pipeline-wrap.panning{cursor:grabbing;}
+.pipeline-canvas{
+  position:absolute;top:0;left:0;height:100%;
+  min-width:860px;width:max(100%,860px);
+  background-image:radial-gradient(circle,var(--pipeline-dot) 1.2px,transparent 1.2px);
+  background-size:24px 24px;
+  padding:20px 32px;
+  will-change:transform;
+  transition:none;
+}
+.pipeline-svg{overflow:visible;display:block;}
 
 /* Stage nodes */
 .pipe-node rect{rx:8;transition:fill .3s,stroke .3s;}
@@ -279,11 +295,11 @@ a{color:var(--accent);}
 /* Smooth stat number transitions */
 .stat-num,.mini-stat-num,.node-count{transition:color .3s;}
 
-/* Tooltip */
+/* Tooltip — fixed positioning so it escapes overflow:hidden */
 .pipe-tooltip{
-  position:absolute;background:var(--surface);border:1px solid var(--border);
+  position:fixed;background:var(--surface);border:1px solid var(--border);
   border-radius:8px;padding:10px 14px;font-size:11px;line-height:1.7;
-  pointer-events:none;opacity:0;transition:opacity .15s;z-index:50;
+  pointer-events:none;opacity:0;transition:opacity .15s;z-index:400;
   min-width:180px;box-shadow:var(--shadow);
 }
 .pipe-tooltip.visible{opacity:1;}
@@ -505,6 +521,48 @@ a{color:var(--accent);}
 .job-card .btn-pause:hover{background:rgba(232,201,122,.1);}
 .job-card .btn-details{background:transparent;border:1px solid var(--border);color:var(--text2);font-size:10px;padding:5px 11px;border-radius:6px;cursor:pointer;transition:border-color .2s,color .2s;}
 .job-card .btn-details:hover{border-color:var(--text2);color:var(--text1);}
+
+/* ── FLOATING JOBS OVERLAY ── */
+.jobs-overlay{
+  position:fixed;bottom:24px;right:24px;z-index:250;
+  display:flex;flex-direction:column;gap:8px;align-items:flex-end;
+}
+.jobs-overlay-panel{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:14px 16px;min-width:230px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.15),0 2px 8px rgba(0,0,0,0.08);
+  display:none;animation:overlayIn .2s ease;
+}
+.jobs-overlay-panel.open{display:block;}
+.jobs-overlay-panel-title{
+  font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text3);margin-bottom:10px;
+}
+.jobs-overlay-item{
+  font-size:11px;padding:5px 0;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;color:var(--text2);
+}
+.jobs-overlay-item:last-child{border-bottom:none;padding-bottom:0;}
+.jobs-overlay-pill{
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;
+  padding:8px 14px;display:flex;align-items:center;gap:8px;
+  font-size:11px;font-weight:600;letter-spacing:.05em;
+  box-shadow:0 4px 16px rgba(0,0,0,0.12);
+  cursor:pointer;transition:all .2s;
+  animation:overlayIn .25s ease;
+}
+.jobs-overlay-pill:hover{background:var(--surface2);}
+@keyframes overlayIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.jobs-overlay-dot{
+  width:8px;height:8px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 0 2px var(--green-dim);
+  animation:pulse 2s ease-in-out infinite;
+  flex-shrink:0;
+}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 2px var(--green-dim)}50%{box-shadow:0 0 0 5px var(--green-dim)}}
+
+/* ── LOG REASON ── */
+.log-reason{font-size:10px;color:var(--text3);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -631,8 +689,9 @@ a{color:var(--accent);}
   <div class="card" style="margin-bottom:18px;overflow:visible;">
     <div class="card-title" style="margin-bottom:0">Processing pipeline</div>
     <div class="pipeline-wrap" id="pipelineWrap">
-      <svg class="pipeline-svg" id="pipelineSvg" height="130" viewBox="0 0 800 130" preserveAspectRatio="xMidYMid meet"></svg>
-      <div class="pipe-tooltip" id="pipeTooltip"></div>
+      <div class="pipeline-canvas" id="pipelineCanvas">
+        <svg class="pipeline-svg" id="pipelineSvg" height="130" viewBox="0 0 800 130" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
     </div>
   </div>
 
@@ -858,6 +917,9 @@ a{color:var(--accent);}
 
 </main>
 </div>
+<!-- Shared pipeline tooltip (fixed-position, outside all overflow:hidden containers) -->
+<div class="pipe-tooltip" id="pipeTooltip"></div>
+<div class="pipe-tooltip" id="jdpPipeTooltip"></div>
 
 <!-- ── MODALS ── -->
 <div class="modal-backdrop" id="jobModal">
@@ -885,10 +947,15 @@ a{color:var(--accent);}
     <div style="display:flex;flex-direction:column;gap:14px">
       <div class="form-group"><label>Name</label><input type="text" id="schedName" placeholder="Daily cleanup"></div>
       <div class="form-group"><label>Interval</label><select id="schedInterval">
-        <option value="1">Every hour</option><option value="2">Every 2 hours</option>
-        <option value="6">Every 6 hours</option><option value="12">Every 12 hours</option>
-        <option value="24" selected>Daily (24h)</option><option value="48">Every 2 days</option>
-        <option value="168">Weekly</option>
+        <option value="15">Every 15 minutes</option>
+        <option value="30">Every 30 minutes</option>
+        <option value="60">Every hour</option>
+        <option value="120">Every 2 hours</option>
+        <option value="360">Every 6 hours</option>
+        <option value="720">Every 12 hours</option>
+        <option value="1440" selected>Daily (24h)</option>
+        <option value="2880">Every 2 days</option>
+        <option value="10080">Weekly</option>
       </select></div>
       <div class="form-group"><label>Emails per run</label><select id="schedLimit"><option value="25">25</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></div>
     </div>
@@ -911,6 +978,19 @@ a{color:var(--accent);}
   </div>
 </div>
 
+<!-- ── FLOATING JOBS OVERLAY ── -->
+<div class="jobs-overlay" id="jobsOverlay" style="display:none">
+  <div class="jobs-overlay-panel" id="jobsOverlayPanel">
+    <div class="jobs-overlay-panel-title">Active Workers</div>
+    <div id="jobsOverlayList"></div>
+  </div>
+  <div class="jobs-overlay-pill" onclick="toggleJobsOverlayPanel()">
+    <span class="jobs-overlay-dot"></span>
+    <span id="jobsOverlayCount">1 Worker Running</span>
+    <span id="jobsOverlayChevron" style="font-size:9px;color:var(--text3)">▲</span>
+  </div>
+</div>
+
 <!-- ── JOB DETAIL PANEL ── -->
 <div class="job-detail-backdrop" id="jobDetailBackdrop" onclick="closeJobDetail()"></div>
 <div class="job-detail-panel" id="jobDetailPanel">
@@ -929,7 +1009,6 @@ a{color:var(--accent);}
       <div class="jdp-section-title">Processing Pipeline</div>
       <div class="jdp-pipeline-wrap">
         <svg id="jdpPipelineSvg" class="jdp-pipeline-svg" height="130" viewBox="0 0 820 130"></svg>
-        <div id="jdpPipeTooltip" class="pipe-tooltip"></div>
       </div>
       <div id="jdpBatchRow" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
     </div>
@@ -986,6 +1065,48 @@ const NODE_W = 100, NODE_H = 80, CY = 65;
 let pipeState = {}; // stage → { status, count, extra }
 let pipeParticles = [];
 let pipeAnimId = null;
+
+/* ── Pipeline pan ── */
+let _pipeOffset = 0, _pipePanning = false, _pipePanStart = 0;
+
+function initPipelinePan() {
+  const wrap = document.getElementById('pipelineWrap');
+  const canvas = document.getElementById('pipelineCanvas');
+  if (!wrap || !canvas) return;
+
+  function clamp(x) {
+    const maxPan = Math.min(0, wrap.offsetWidth - canvas.scrollWidth);
+    return Math.max(maxPan, Math.min(0, x));
+  }
+
+  wrap.addEventListener('mousedown', e => {
+    if (e.target.closest('.pipe-tooltip')) return;
+    _pipePanning = true;
+    _pipePanStart = e.clientX - _pipeOffset;
+    wrap.classList.add('panning');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!_pipePanning) return;
+    _pipeOffset = clamp(e.clientX - _pipePanStart);
+    canvas.style.transform = `translateX(${_pipeOffset}px)`;
+  });
+  window.addEventListener('mouseup', () => {
+    if (!_pipePanning) return;
+    _pipePanning = false;
+    wrap.classList.remove('panning');
+  });
+  wrap.addEventListener('touchstart', e => {
+    _pipePanning = true;
+    _pipePanStart = e.touches[0].clientX - _pipeOffset;
+  }, { passive: true });
+  wrap.addEventListener('touchmove', e => {
+    if (!_pipePanning) return;
+    _pipeOffset = clamp(e.touches[0].clientX - _pipePanStart);
+    canvas.style.transform = `translateX(${_pipeOffset}px)`;
+  }, { passive: true });
+  wrap.addEventListener('touchend', () => { _pipePanning = false; });
+}
 
 function initPipeline() {
   const svg = document.getElementById('pipelineSvg');
@@ -1166,8 +1287,6 @@ function spawnSingleParticle(x1, x2, y, color) {
 function showPipeTooltip(stageId, evt) {
   const tt = document.getElementById('pipeTooltip');
   const s = pipeState[stageId] || {};
-  const wrap = document.getElementById('pipelineWrap');
-  const wRect = wrap.getBoundingClientRect();
   const eRect = evt.target.closest('g').getBoundingClientRect();
 
   const labels = { fetch:'Emails fetched from IMAP', dedup:'Cache hits (saved API calls)', classify:'Classified by Claude', apply:'Actions applied to mailbox', done:'Run complete' };
@@ -1182,8 +1301,8 @@ function showPipeTooltip(stageId, evt) {
     <div class="pipe-tooltip-row" style="margin-top:4px"><span>Status</span><span class="pipe-tooltip-val" style="color:${s.status==='running'?'var(--accent)':s.status==='done'?'var(--green)':s.status==='error'?'var(--red)':'var(--text3)'}">${s.status||'idle'}</span></div>
   `;
 
-  const x = eRect.left - wRect.left + (eRect.width / 2) - 90;
-  const y = eRect.bottom - wRect.top + 8;
+  const x = eRect.left + eRect.width / 2 - 90;
+  const y = eRect.bottom + 8;
   tt.style.left = Math.max(0, x) + 'px';
   tt.style.top = y + 'px';
   tt.classList.add('visible');
@@ -1310,8 +1429,10 @@ function closeSidebar() {
 function toggleTheme() {
   const html = document.documentElement;
   const isDark = html.getAttribute('data-theme') === 'dark';
-  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
-  document.querySelector('.theme-toggle').textContent = isDark ? '☀️' : '🌙';
+  const next = isDark ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  document.querySelector('.theme-toggle').textContent = next === 'dark' ? '🌙' : '☀️';
+  localStorage.setItem('ic_theme', next);
   if (activityChart) { rebuildCharts(); }
 }
 
@@ -1491,6 +1612,8 @@ function addLogItem(data) {
   const subject = (data.subject || '').substring(0, 60);
   const from = (data.from || '').replace(/<.*?>/, '').trim().substring(0, 28);
   const folder = data.folder ? `→ ${data.folder.split('/').pop()}` : '';
+  const reason = data.reason && !isError && action === 'keep' && !folder
+    ? `<span class="log-reason">${escHtml(data.reason.substring(0, 70))}</span>` : '';
 
   li.innerHTML = `
     <span class="log-action-dot" style="background:${dotColor}"></span>
@@ -1498,6 +1621,7 @@ function addLogItem(data) {
     <span class="log-subject">${escHtml(subject)}</span>
     ${isCached ? '<span class="log-cached-tag">cached</span>' : ''}
     ${folder && !isError ? `<span class="log-folder">${escHtml(folder)}</span>` : ''}
+    ${reason}
     ${isError ? `<button class="log-error-btn" onclick='showError("${escHtml(data.code||'ERROR')}","${escHtml(data.message||'')}","${escHtml(data.remediation||'')}")'>Details</button>` : ''}
   `;
   log.insertBefore(li, log.firstChild);
@@ -1696,7 +1820,7 @@ async function loadRunDetail(runId) {
       <span class="log-action-dot" style="background:${dot}"></span>
       <span class="log-from">${escHtml((a.from_addr||'').replace(/<.*?>/,'').trim().substring(0,28))}</span>
       <span class="log-subject">${escHtml((a.subject||'').substring(0,60))}</span>
-      <span class="log-folder">${a.folder ? '→ '+a.folder.split('/').pop() : ''}</span>
+      ${a.folder ? `<span class="log-folder">→ ${a.folder.split('/').pop()}</span>` : (a.reason && !isErr ? `<span class="log-reason">${escHtml((a.reason||'').substring(0,70))}</span>` : '<span></span>')}
       ${isErr ? `<button class="log-error-btn" onclick='showError("IMAP_ERROR","${escHtml(a.error_detail||'')}","Check your folder structure.")'>Details</button>` : ''}
     </div>`;
   }).join('') || '<div class="empty">No actions recorded</div>';
@@ -2023,6 +2147,7 @@ function initJdpPipeline() {
     g.appendChild(label);
     g.addEventListener('mouseenter', e => showJdpPipeTooltip(s.id, e));
     g.addEventListener('mouseleave', () => document.getElementById('jdpPipeTooltip')?.classList.remove('visible'));
+    /* also hide on click (touch devices) */
     svg.appendChild(g);
     _jdpPipeState[s.id] = { status:'idle', count:0, cached:0, batches:0 };
   });
@@ -2097,9 +2222,8 @@ function showJdpPipeTooltip(stageId, evt) {
     <div class="pipe-tooltip-row"><span>${labels[stageId]||''}</span><span class="pipe-tooltip-val">${s.count ?? '—'}</span></div>
     <div class="pipe-tooltip-row" style="margin-top:4px"><span>Status</span><span class="pipe-tooltip-val" style="color:${s.status==='running'?'var(--accent)':s.status==='done'?'var(--green)':s.status==='error'?'var(--red)':'var(--text3)'}">${s.status||'idle'}</span></div>`;
   const eRect = evt.target.closest('g').getBoundingClientRect();
-  const wRect = document.getElementById('jdpPipelineSvg').getBoundingClientRect();
-  tt.style.left = Math.max(0, eRect.left - wRect.left + eRect.width/2 - 90) + 'px';
-  tt.style.top  = (eRect.bottom - wRect.top + 8) + 'px';
+  tt.style.left = Math.max(0, eRect.left + eRect.width / 2 - 90) + 'px';
+  tt.style.top  = (eRect.bottom + 8) + 'px';
   tt.classList.add('visible');
 }
 
@@ -2470,7 +2594,7 @@ async function loadSchedules() {
       <div>
         <div class="sched-name">${escHtml(s.name)}</div>
         <div class="sched-meta">
-          <span>Every ${s.interval_hours}h</span>
+          <span>${fmtInterval(s)}</span>
           <span>${s.limit_per_run} emails/run</span>
           ${s.last_run ? `<span>Last: ${fmtTime(s.last_run)}</span>` : ''}
           ${s.next_run && s.enabled ? `<span>Next: ${fmtTime(s.next_run)}</span>` : ''}
@@ -2489,10 +2613,24 @@ function openSchedModal() { document.getElementById('schedModal').classList.add(
 function closeSchedModal() { document.getElementById('schedModal').classList.remove('open'); }
 
 async function createSchedule() {
-  const data = { name:document.getElementById('schedName').value||'Auto cleanup', interval_hours:parseInt(document.getElementById('schedInterval').value), limit_per_run:parseInt(document.getElementById('schedLimit').value) };
+  const data = {
+    name: document.getElementById('schedName').value || 'Auto cleanup',
+    interval_minutes: parseInt(document.getElementById('schedInterval').value),
+    limit_per_run: parseInt(document.getElementById('schedLimit').value),
+  };
   await fetch('/api/schedules', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
   closeSchedModal();
   loadSchedules();
+}
+
+function fmtInterval(s) {
+  const mins = s.interval_minutes != null ? s.interval_minutes : (s.interval_hours || 24) * 60;
+  if (mins < 60) return `Every ${mins}m`;
+  if (mins === 60) return 'Hourly';
+  if (mins < 1440) return `Every ${mins / 60}h`;
+  if (mins === 1440) return 'Daily';
+  if (mins < 10080) return `Every ${Math.round(mins / 1440)}d`;
+  return 'Weekly';
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -2577,6 +2715,13 @@ async function clearAllData() {
 /* ════════════════════════════════════════════════════════════
    CONTAINER STATUS
 ════════════════════════════════════════════════════════════ */
+let _overlayOpen = false;
+function toggleJobsOverlayPanel() {
+  _overlayOpen = !_overlayOpen;
+  document.getElementById('jobsOverlayPanel').classList.toggle('open', _overlayOpen);
+  document.getElementById('jobsOverlayChevron').textContent = _overlayOpen ? '▼' : '▲';
+}
+
 async function pollContainerStatus() {
   try {
     const res  = await fetch('/api/containers');
@@ -2594,20 +2739,33 @@ async function pollContainerStatus() {
       workerRow.style.display = 'flex';
       workerDot.className     = 'container-dot running';
       workerBadge.textContent = count;
-      // Show running job names as tooltip
       const names = workers.map(w => w.name).join(', ');
       workerLabel.title = names;
       workerLabel.textContent = count === 1 ? '1 Worker' : `${count} Workers`;
+      // Floating overlay
+      const overlay = document.getElementById('jobsOverlay');
+      const overlayList = document.getElementById('jobsOverlayList');
+      const overlayCount = document.getElementById('jobsOverlayCount');
+      overlay.style.display = 'flex';
+      overlayCount.textContent = count === 1 ? '1 Worker Running' : `${count} Workers Running`;
+      overlayList.innerHTML = workers.map(w =>
+        `<div class="jobs-overlay-item">
+          <span class="jobs-overlay-dot"></span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(w.name || 'worker')}</span>
+        </div>`
+      ).join('');
     } else {
       workerRow.style.display = 'none';
+      const overlay = document.getElementById('jobsOverlay');
+      overlay.style.display = 'none';
+      _overlayOpen = false;
+      document.getElementById('jobsOverlayPanel')?.classList.remove('open');
     }
   } catch(e) {
-    // App is restarting — brief red flash on the app dot
     const appDot    = document.getElementById('appDot');
     const appStatus = document.getElementById('appStatus');
     if (appDot)    appDot.className     = 'container-dot error';
     if (appStatus) appStatus.textContent = 'OFFLINE';
-    // Restore green after 10 s (will be overwritten on next successful poll)
     setTimeout(() => {
       if (appDot)    appDot.className     = 'container-dot running';
       if (appStatus) appStatus.textContent = 'LIVE';
@@ -2619,7 +2777,18 @@ async function pollContainerStatus() {
    INIT
 ════════════════════════════════════════════════════════════ */
 window.addEventListener('DOMContentLoaded', () => {
+  // Restore saved theme preference
+  const savedTheme = localStorage.getItem('ic_theme');
+  if (savedTheme) {
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    document.querySelector('.theme-toggle').textContent = savedTheme === 'dark' ? '🌙' : '☀️';
+  } else {
+    // Default is light (set in HTML); update button emoji
+    document.querySelector('.theme-toggle').textContent = '☀️';
+  }
+
   initPipeline();
+  initPipelinePan();
   loadDashboard();
   loadCredStatus();
   pollContainerStatus();

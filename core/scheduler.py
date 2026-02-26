@@ -33,7 +33,7 @@ def _fire_schedule(db, sched: dict, now: datetime) -> None:
     cursor = db.execute(
         'INSERT INTO runs (started_at, status, run_type, source_folder) '
         'VALUES (?, "running", "scheduled", ?)',
-        (now.isoformat(), sched.get('folder', 'INBOX')),
+        (now.isoformat(), sched['folder'] if sched['folder'] else 'INBOX'),
     )
     run_id = cursor.lastrowid
     db.commit()
@@ -65,6 +65,17 @@ def _fire_schedule(db, sched: dict, now: datetime) -> None:
         db.commit()
 
 
+def _sched_delta(sched) -> timedelta:
+    """Return the interval timedelta for a schedule, preferring interval_minutes if set."""
+    try:
+        mins = sched['interval_minutes']
+    except (KeyError, IndexError):
+        mins = None
+    if mins:
+        return timedelta(minutes=int(mins))
+    return timedelta(hours=int(sched['interval_hours']))
+
+
 def scheduler_loop() -> None:
     log.info('Scheduler started')
     while True:
@@ -74,14 +85,14 @@ def scheduler_loop() -> None:
             for sched in db.execute('SELECT * FROM schedules WHERE enabled = 1').fetchall():
                 next_run = sched['next_run']
                 if not next_run:
-                    nr = (now + timedelta(hours=sched['interval_hours'])).isoformat()
+                    nr = (now + _sched_delta(sched)).isoformat()
                     db.execute('UPDATE schedules SET next_run=? WHERE id=?', (nr, sched['id']))
                     db.commit()
                     continue
 
                 if datetime.fromisoformat(next_run) <= now:
                     _fire_schedule(db, sched, now)
-                    nr = (now + timedelta(hours=sched['interval_hours'])).isoformat()
+                    nr = (now + _sched_delta(sched)).isoformat()
                     db.execute(
                         'UPDATE schedules SET next_run=?, last_run=? WHERE id=?',
                         (nr, now.isoformat(), sched['id']),

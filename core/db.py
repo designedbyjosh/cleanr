@@ -139,6 +139,7 @@ def init_db() -> None:
         "ALTER TABLE schedules ADD COLUMN custom_prompt TEXT DEFAULT ''",
         "ALTER TABLE schedules ADD COLUMN delete_marketing_unread INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE schedules ADD COLUMN skip_flagged INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE schedules ADD COLUMN interval_minutes INTEGER",
         # Tables added in previous iterations — safe no-ops if they already exist
         "CREATE TABLE IF NOT EXISTS job_events (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id INTEGER, run_id INTEGER, session_id TEXT NOT NULL, event TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL)",
         "CREATE TABLE IF NOT EXISTS worker_containers (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id INTEGER NOT NULL, run_id INTEGER, container_id TEXT, container_name TEXT, status TEXT DEFAULT 'starting', created_at TEXT NOT NULL, finished_at TEXT)",
