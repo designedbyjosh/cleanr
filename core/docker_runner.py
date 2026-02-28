@@ -45,6 +45,49 @@ def docker_available() -> bool:
 
 # ── Self-inspect ──────────────────────────────────────────────────────────────
 
+def _find_self_container(client):
+    """
+    Try to find the running Flask container object via multiple strategies:
+      1. Direct lookup by HOSTNAME (the short container ID Docker sets by default).
+      2. Scan all running containers for one whose ID starts with HOSTNAME.
+      3. Scan all running containers for one that has /var/run/docker.sock mounted
+         AND /data mounted (i.e. looks like us) as a last resort.
+    Returns the container object or None.
+    """
+    hostname = os.environ.get('HOSTNAME', '')
+
+    # Strategy 1 — direct get by ID/name
+    if hostname:
+        try:
+            return client.containers.get(hostname)
+        except Exception:
+            pass
+
+    # Strategy 2 — scan for ID prefix match
+    if hostname:
+        try:
+            for c in client.containers.list():
+                if c.id.startswith(hostname) or c.short_id == hostname:
+                    log.info(f'Docker self-inspect: found self via ID-prefix scan ({c.name!r})')
+                    return c
+        except Exception:
+            pass
+
+    # Strategy 3 — find the container that has /var/run/docker.sock AND /data mounted
+    try:
+        for c in client.containers.list():
+            mounts = c.attrs.get('Mounts', [])
+            has_sock  = any(m.get('Source') == '/var/run/docker.sock' for m in mounts)
+            has_data  = any(m.get('Destination') == '/data' for m in mounts)
+            if has_sock and has_data:
+                log.info(f'Docker self-inspect: found self via mount-signature scan ({c.name!r})')
+                return c
+    except Exception:
+        pass
+
+    return None
+
+
 def get_worker_cfg() -> dict:
     """
     Inspect the running Flask container once to discover:
@@ -62,9 +105,16 @@ def get_worker_cfg() -> dict:
         _worker_cfg = {}
         return _worker_cfg
 
-    hostname = os.environ.get('HOSTNAME', '')
+    self_c = _find_self_container(client)
+    if self_c is None:
+        log.warning(
+            f'Docker self-inspect failed: could not locate self container '
+            f'(HOSTNAME={os.environ.get("HOSTNAME", "")!r})'
+        )
+        _worker_cfg = {}
+        return _worker_cfg
+
     try:
-        self_c  = client.containers.get(hostname)
         image   = self_c.attrs['Config']['Image']
 
         volumes = {}
@@ -107,7 +157,10 @@ def launch_worker_container(manifest, container_name: str):
         raise RuntimeError('Docker is not available — cannot launch worker container.')
 
     cfg     = get_worker_cfg()
-    image   = cfg.get('image',   'inbox-cleaner-v2-inbox-cleaner:latest')
+    # WORKER_IMAGE env var is the explicit override (set in production docker-compose).
+    # Falls back to the self-inspected image, then to the local-dev compose name.
+    image   = (os.environ.get('WORKER_IMAGE')
+               or cfg.get('image', 'inbox-cleaner-v2-inbox-cleaner:latest'))
     volumes = cfg.get('volumes', {})
     network = cfg.get('network', 'bridge')
 
